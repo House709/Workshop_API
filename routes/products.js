@@ -4,10 +4,17 @@ const mongoose = require("mongoose");
 const productModel = require("../models/productModel");
 const orderModel = require("../models/orderModel");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const sharp = require("sharp");
+const path = require("path");
+const fs = require("fs");
+
+const upload = multer({ dest: "/public/product_image" });
 
 router.get("/", async function (req, res, next) {
   try {
     let products = await productModel.find();
+
     return res.status(200).send({
       data: products,
       message: "success",
@@ -53,34 +60,68 @@ router.get("/:id", async function (req, res, next) {
   }
 });
 
-router.post("/", async function (req, res, next) {
-  try {
-    const { product_name, price, amount } = req.body;
-    let check = await productModel.findOne({ product_name });
-    if (check) {
-      return res.json({
-        message: "Product already exits.",
+router.post(
+  "/",
+  upload.single("product_image"),
+  async function (req, res, next) {
+    try {
+      if (!req.file) {
+        return res.status(400).send("No file uploaded.");
+      }
+      const { product_name, price, amount } = req.body;
+
+      const resizedImageBuffer = await sharp(req.file.path)
+        .resize({ width: 300 })
+        .toBuffer();
+
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, "0"); // Adding 1 because months are zero-indexed
+      const year = now.getFullYear().toString();
+
+      const folder = `${month}${year}`;
+      let dbPath = `/product_image/${folder}`;
+      const savePath = `./public/product_image/${folder}`;
+
+      if (!fs.existsSync(savePath)) {
+        fs.mkdirSync(savePath, { recursive: true });
+      }
+      console.log(req.file);
+      const fileName =
+        now.getTime() + `.` + req.file.originalname.split(".").pop();
+
+      const imagePath = savePath + `/` + fileName;
+      dbPath = dbPath + `/` + fileName;
+
+      console.log(imagePath);
+      await sharp(resizedImageBuffer).toFile(imagePath);
+
+      let check = await productModel.findOne({ product_name });
+      if (check) {
+        return res.json({
+          message: "Product already exits.",
+        });
+      }
+      let newProduct = new productModel({
+        product_name,
+        price,
+        amount,
+        product_image: dbPath,
+      });
+      let product = await newProduct.save();
+      return res.status(201).send({
+        data: product,
+        message: "create success",
+        success: true,
+      });
+    } catch (error) {
+      console.log(error);
+      return res.status(500).send({
+        message: "create fail",
+        success: false,
       });
     }
-    let newProduct = new productModel({
-      product_name: product_name,
-      price: price,
-      amount: amount,
-    });
-    let product = await newProduct.save();
-    return res.status(201).send({
-      data: product,
-      message: "create success",
-      success: true,
-    });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).send({
-      message: "create fail",
-      success: false,
-    });
   }
-});
+);
 
 router.put("/:id", async function (req, res, next) {
   try {
@@ -155,10 +196,9 @@ router.post("/:id/orders", async function (req, res, next) {
     }
     const token = req.headers.authorization.split("Bearer ")[1];
     const decodedToken = jwt.decode(token);
-
     if (product.amount < order_amount) {
       return res.json({
-        message: "Not enought product for order",
+        message: "Not enough product",
       });
     }
     let newOrder = new orderModel({
@@ -166,6 +206,12 @@ router.post("/:id/orders", async function (req, res, next) {
       product_name: product.product_name,
       order_amount,
     });
+
+    await productModel.updateOne(
+      { _id: new mongoose.Types.ObjectId(id) },
+      { $set: { amount: product.amount - order_amount } }
+    );
+
     let orders = await newOrder.save();
     return res.status(201).send({
       status: 201,

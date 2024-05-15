@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const userModel = require("../models/userModel");
 require("dotenv").config();
 
-router.patch("/:id", async function (req, res, next) {
+router.patch("/approve/:id", async function (req, res, next) {
   try {
     let id = req.params.id;
     if (!mongoose.Types.ObjectId.isValid(id)) {

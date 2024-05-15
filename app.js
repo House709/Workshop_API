@@ -32,7 +32,7 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use("/", indexRouter);
 app.use("/login", loginRouter);
 
-app.use("/products", verifyToken, productRouter);
+app.use("/products", productRouter);
 app.use("/register", registerRouter);
 app.use("/admin", verifyAdmin, adminRouter);
 app.use("/orders", verifyToken, orderRouter);
